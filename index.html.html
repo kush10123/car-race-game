@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Ultimate Car Race</title>
+
+<style>
+body {
+  margin: 0;
+  background: #000;
+  color: white;
+  font-family: Arial;
+  text-align: center;
+  overflow: hidden;
+}
+
+canvas {
+  display: block;
+  margin: auto;
+  background: #333;
+  border: 3px solid white;
+}
+
+#menu {
+  position: absolute;
+  top: 40%;
+  width: 100%;
+}
+
+button {
+  padding: 12px 22px;
+  font-size: 18px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  margin: 5px;
+}
+
+#mobileControls {
+  position: absolute;
+  bottom: 10px;
+  width: 100%;
+  display: none;
+}
+
+.ctrlBtn {
+  width: 80px;
+  height: 80px;
+  font-size: 30px;
+  border-radius: 50%;
+  opacity: 0.7;
+}
+</style>
+</head>
+
+<body>
+
+<h2>🏁 Ultimate Car Race</h2>
+
+<div id="menu">
+  <button onclick="startGame()">Start Game</button>
+</div>
+
+<canvas id="game" width="400" height="600"></canvas>
+
+<div id="mobileControls">
+  <button class="ctrlBtn" ontouchstart="moveLeft()">⬅️</button>
+  <button class="ctrlBtn" ontouchstart="nitroBoost()">⚡</button>
+  <button class="ctrlBtn" ontouchstart="moveRight()">➡️</button>
+</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+let running = false;
+let paused = false;
+let score = 0;
+let level = 1;
+let speed = 3;
+let nitro = 100;
+let highScores = JSON.parse(localStorage.getItem("leaderboard")) || [];
+
+const player = { x: 180, y: 480, w: 40, h: 70, speed: 7 };
+let enemies = [];
+let roadOffset = 0;
+
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function sound(freq, dur=0.1){
+  const osc = audioCtx.createOscillator();
+  osc.frequency.value = freq;
+  osc.connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime + dur);
+}
+
+function car(x,y,color){
+  ctx.fillStyle=color;
+  ctx.fillRect(x,y,40,70);
+  ctx.fillStyle="#111";
+  ctx.fillRect(x+5,y+10,30,15);
+  ctx.fillRect(x+5,y+45,30,15);
+}
+
+function road(){
+  ctx.fillStyle="#222";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  ctx.strokeStyle="white";
+  ctx.setLineDash([20,15]);
+  ctx.lineDashOffset=-roadOffset;
+  ctx.beginPath();
+  ctx.moveTo(200,0);
+  ctx.lineTo(200,600);
+  ctx.stroke();
+
+  roadOffset+=speed*2;
+}
+
+function hit(a,b){
+  return a.x<b.x+b.w && a.x+a.w>b.x &&
+         a.y<b.y+b.h && a.y+a.h>b.y;
+}
+
+function spawn(){
+  const lanes=[20,100,180,260,340];
+  enemies.push({
+    x:lanes[Math.floor(Math.random()*lanes.length)],
+    y:-80,w:40,h:70,speed:speed
+  });
+}
+
+function nitroBoost(){
+  if(nitro>10){
+    speed+=3;
+    nitro-=10;
+    sound(800,0.1);
+    setTimeout(()=>speed-=3,500);
+  }
+}
+
+function loop(){
+  if(!running||paused) return;
+
+  ctx.clearRect(0,0,400,600);
+  road();
+  car(player.x,player.y,"red");
+
+  enemies.forEach((e,i)=>{
+    e.y+=e.speed;
+    car(e.x,e.y,"blue");
+
+    if(hit(player,e)){
+      sound(120,0.5);
+      gameOver();
+    }
+
+    if(e.y>600){
+      enemies.splice(i,1);
+      score++;
+      nitro=Math.min(100,nitro+2);
+      sound(600,0.05);
+    }
+  });
+
+  level=Math.floor(score/10)+1;
+  speed=3+level*0.5;
+
+  ctx.fillStyle="white";
+  ctx.font="16px Arial";
+  ctx.fillText("Score: "+score,10,20);
+  ctx.fillText("Level: "+level,10,40);
+  ctx.fillText("Nitro: "+nitro+"%",10,60);
+
+  ctx.fillRect(10,70,nitro*1.5,10);
+
+  requestAnimationFrame(loop);
+}
+
+function startGame(){
+  document.getElementById("menu").style.display="none";
+  document.getElementById("mobileControls").style.display="block";
+
+  running=true;
+  paused=false;
+  score=0;
+  nitro=100;
+  enemies=[];
+  loop();
+}
+
+function gameOver(){
+  running=false;
+
+  highScores.push(score);
+  highScores.sort((a,b)=>b-a);
+  highScores=highScores.slice(0,5);
+  localStorage.setItem("leaderboard",JSON.stringify(highScores));
+
+  document.getElementById("menu").innerHTML=
+  `<h2>Game Over</h2>
+   <p>Score: ${score}</p>
+   <p>Top Scores: ${highScores.join(", ")}</p>
+   <button onclick="startGame()">Restart</button>`;
+
+  document.getElementById("menu").style.display="block";
+}
+
+document.addEventListener("keydown",e=>{
+  if(e.key==="ArrowLeft") moveLeft();
+  if(e.key==="ArrowRight") moveRight();
+  if(e.key===" ") nitroBoost();
+  if(e.key==="p") paused=!paused;
+});
+
+function moveLeft(){
+  if(player.x>0) player.x-=player.speed;
+}
+
+function moveRight(){
+  if(player.x<360) player.x+=player.speed;
+}
+
+setInterval(()=>{
+  if(running&&!paused) spawn();
+},800);
+
+if(/Android|iPhone/i.test(navigator.userAgent)){
+  document.getElementById("mobileControls").style.display="block";
+}
+</script>
+
+</body>
+</html>
